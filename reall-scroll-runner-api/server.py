@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
 
-HOST = os.environ.get("HOST", "127.0.0.1")
+HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "3000"))
 EXTERNAL_PROGRESS_TOKEN = os.environ.get("EXTERNAL_PROGRESS_TOKEN", "")
 GPX_PATH = Path(__file__).parent / "data" / "everest_base_camp.gpx"
