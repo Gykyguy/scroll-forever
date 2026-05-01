@@ -12,9 +12,12 @@ Required env vars:
                           Scroll Mile extension loaded
 Optional:
   EXTENSION_ID            override default Scroll Mile extension id
+  BROWSER_CHANNEL         Playwright browser channel (default: chrome)
   HEADLESS                "1" to run headless (default 0; extensions are most
                           reliable with a visible window)
   TIMEOUT_MS              navigation/wait timeout, default 20000
+  SKIP_SSL_VERIFY         "1" disables TLS certificate verification for POST.
+                          Use only if your local Python cert store is broken.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import sys
 import urllib.request
 from typing import Optional
@@ -51,7 +55,7 @@ def parse_miles(text: str) -> Optional[float]:
     return value if value >= 0 else None
 
 
-def post_miles(bridge_url: str, token: str, miles: float) -> dict:
+def post_miles(bridge_url: str, token: str, miles: float, skip_ssl_verify: bool) -> dict:
     body = json.dumps(
         {
             "miles": miles,
@@ -67,18 +71,28 @@ def post_miles(bridge_url: str, token: str, miles: float) -> dict:
             "X-Bridge-Token": token,
         },
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    ssl_context = None
+    if skip_ssl_verify:
+        ssl_context = ssl._create_unverified_context()
+    with urllib.request.urlopen(req, timeout=15, context=ssl_context) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def read_lifetime_miles(user_data_dir: str, extension_id: str, headless: bool, timeout_ms: int) -> Optional[float]:
+def read_lifetime_miles(
+    user_data_dir: str,
+    extension_id: str,
+    headless: bool,
+    timeout_ms: int,
+    browser_channel: str,
+) -> Optional[float]:
     target_url = f"chrome-extension://{extension_id}/{DASHBOARD_PATH}"
     with sync_playwright() as p:
         browser_context = p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless,
+            channel=browser_channel,
+            ignore_default_args=["--disable-extensions"],
             args=[
-                f"--disable-extensions-except={user_data_dir}",
                 "--no-first-run",
                 "--no-default-browser-check",
             ],
@@ -104,7 +118,9 @@ def main() -> int:
     token = os.environ.get("EXTERNAL_PROGRESS_TOKEN", "").strip()
     user_data_dir = os.environ.get("USER_DATA_DIR", "").strip()
     extension_id = os.environ.get("EXTENSION_ID", DEFAULT_EXTENSION_ID).strip()
+    browser_channel = os.environ.get("BROWSER_CHANNEL", "chrome").strip() or "chrome"
     headless = os.environ.get("HEADLESS", "0") == "1"
+    skip_ssl_verify = os.environ.get("SKIP_SSL_VERIFY", "0") == "1"
     try:
         timeout_ms = int(os.environ.get("TIMEOUT_MS", "20000"))
     except ValueError:
@@ -119,13 +135,13 @@ def main() -> int:
         print(f"Missing required env vars: {', '.join(missing)}", file=sys.stderr)
         return 2
 
-    miles = read_lifetime_miles(user_data_dir, extension_id, headless, timeout_ms)
+    miles = read_lifetime_miles(user_data_dir, extension_id, headless, timeout_ms, browser_channel)
     if miles is None:
         print("Could not read #lifetimeMiles from dashboard", file=sys.stderr)
         return 3
 
     try:
-        result = post_miles(bridge_url, token, miles)
+        result = post_miles(bridge_url, token, miles, skip_ssl_verify)
     except Exception as exc:
         print(f"POST failed: {exc}", file=sys.stderr)
         return 4

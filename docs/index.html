@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>REALL_SCROLL_RUNNER_v1</title>
+  <title>foreverest</title>
   <style>
     :root {
       color-scheme: dark;
@@ -46,7 +46,7 @@
       right: 50px;
       width: 300px;
       height: 300px;
-      border: 1px solid #364259;
+      border: 0;
       border-radius: 0;
       overflow: hidden;
       background: #0b1220;
@@ -65,16 +65,35 @@
       display: none;
     }
 
+    .left-stack {
+      position: absolute;
+      left: 50px;
+      top: 50px;
+      width: auto;
+      z-index: 12;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .brand-logo {
+      width: 100%;
+      max-height: 110px;
+      object-fit: contain;
+      object-position: left center;
+      display: block;
+    }
+
     .sideview-window {
       position: absolute;
       left: 50px;
       bottom: 50px;
-      width: min(32vw, 490px);
+      width: min(44.8vw, 686px);
       min-height: 90px;
       aspect-ratio: 1507.5 / 199;
       z-index: 11;
-      background: #000;
-      border: 1px solid rgba(54, 66, 89, 0.7);
+      background: rgba(0, 0, 0, 0.88);
+      border: 0;
       overflow: hidden;
     }
 
@@ -94,16 +113,16 @@
     }
 
     .hud {
-      position: absolute;
-      top: 50px;
-      left: 50px;
-      z-index: 12;
+      position: relative;
+      z-index: 1;
       background: rgba(0, 0, 0, 0.88);
-      border: 1px solid #364259;
+      border: 0;
       border-radius: 0;
       padding: 10px 12px;
       color: #e6edf7;
+      width: auto;
       min-width: 220px;
+      align-self: flex-start;
       backdrop-filter: blur(3px);
     }
 
@@ -120,11 +139,28 @@
       color: #c5d0df;
     }
 
-    .hud button {
+    .story-box {
+      position: relative;
+      z-index: 1;
+      width: min(32vw, 490px);
+      align-self: flex-start;
+      background: rgba(0, 0, 0, 0.88);
+      border: 0;
+      border-radius: 0;
+      padding: 10px 12px;
+      color: #e6edf7;
+      backdrop-filter: blur(3px);
+      text-align: right;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .hud button,
+    .swap-under-street button {
       margin-top: 6px;
-      width: 100%;
+      width: auto;
       padding: 4px 6px;
-      border: 0.5px solid #4a566f;
+      border: 0;
       background: #0a0a0a;
       color: #e6edf7;
       cursor: pointer;
@@ -140,10 +176,19 @@
         top: 20px;
         right: 20px;
       }
+      .left-stack {
+        left: 20px;
+        width: auto;
+      }
+      .brand-logo { width: 100%; }
       .sideview-window {
         left: 20px;
         bottom: 20px;
-        width: min(70vw, 420px);
+        width: min(98vw, 588px);
+      }
+      .story-box {
+        width: min(98vw, 588px);
+        font-size: 11px;
       }
     }
   </style>
@@ -151,15 +196,24 @@
 <body>
   <main class="map-shell" aria-label="Fullscreen trail map layout">
     <section aria-label="Google Maps window" style="width:100%;height:100%;">
-      <section class="hud" aria-live="polite">
-        <h1>Everest Base Camp Trail</h1>
-        <p id="progress">Progress: 0.0%</p>
-        <p id="distance">Distance: 0.0 / 0.0 km</p>
-        <p id="remaining">Remaining: 0.0 km</p>
-        <p id="hint">Scroll down to move forward</p>
-        <p id="bridgeStatus">Bridge: waiting for Scroll Mile data...</p>
-        <button id="viewToggle" type="button">↔ Swap View</button>
-      </section>
+      <aside class="left-stack" aria-label="Trail stats column">
+        <img class="brand-logo" src="logo_foreverest.svg" alt="Foreverest logo">
+        <aside class="story-box" aria-label="Scroll connection explanation">
+          נתוני הגלישה שלי מחוברים למסלול המוביל לפסגה של האוורסט, המרחק הפיזי של המסך אותו אני גולל "נצעד" על גבי המסלול. הנתונים מתעדכנים פעמיים ביום בשעות 9:00 ו21:00. כך בכל יום, בזחילת אצבעות עקבית, אגיע לפסגה.
+        </aside>
+        <section class="hud" aria-live="polite">
+          <h1>Trail statistics</h1>
+          <p id="startDate">Starting date: 29.04.2026</p>
+          <p id="progress">Progress: 0.0%</p>
+          <p id="distance">Distance: 0.0 / 0.0 km</p>
+          <p id="remaining">Remaining: 0.0 km</p>
+          <p id="screens">Screens scrolled: 0.00</p>
+          <p id="hours">Approx. hours scrolling: 0h 00m</p>
+          <p id="altitude">Altitude: 0.00 m</p>
+          <p id="eta">Estimated time of arrival: --</p>
+          <button id="viewToggle" type="button">↔ Swap View</button>
+        </section>
+      </aside>
       <div id="map" aria-label="Trail from Tel Aviv to Jerusalem"></div>
       <div id="streetviewMain" aria-label="Large Street View"></div>
       <aside class="streetview-window" aria-label="Street View">
@@ -202,8 +256,8 @@
     let isSyncingProgress = false;
     let lastExternalMiles = null;
     let lastExternalUpdatedAt = 0;
-    let lastBridgeSource = "none";
-    let lastBridgeSeenAt = 0;
+    let progressBaselineMeters = null;
+    let progressBaselineAt = null;
     const trailInstructions = [];
     const sideTrailGuide = [
       { x: 0.02, y: 0.84 },
@@ -221,8 +275,12 @@
     const progressEl = document.getElementById("progress");
     const distanceEl = document.getElementById("distance");
     const remainingEl = document.getElementById("remaining");
-    const hintEl = document.getElementById("hint");
-    const bridgeStatusEl = document.getElementById("bridgeStatus");
+    const screensEl = document.getElementById("screens");
+    const hoursEl = document.getElementById("hours");
+    const altitudeEl = document.getElementById("altitude");
+    const etaEl = document.getElementById("eta");
+    const hudEl = document.querySelector(".hud");
+    const storyBoxEl = document.querySelector(".story-box");
     const sideviewCanvas = document.getElementById("sideview");
     const sideTrailOverlay = document.getElementById("sideTrailOverlay");
     const streetViewEl = document.getElementById("streetview");
@@ -263,6 +321,11 @@
         sideTrailOverlay.width = sideviewCanvas.width;
         sideTrailOverlay.height = sideviewCanvas.height;
       }
+    }
+
+    function syncStoryBoxWidth() {
+      if (!hudEl || !storyBoxEl) return;
+      storyBoxEl.style.width = `${hudEl.offsetWidth}px`;
     }
 
     function mapProfileToCanvas(profile, width, height, padding) {
@@ -553,8 +616,7 @@
       const h = sideviewCanvas.height;
 
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
       const imageRect = {
         w,
@@ -578,11 +640,35 @@
       totalMeters = profileData.totalDistanceMeters || totalMeters;
       sideviewReady = true;
       resizeSideviewCanvas();
+      syncStoryBoxWidth();
       drawSideview();
       window.addEventListener("resize", () => {
         resizeSideviewCanvas();
+        syncStoryBoxWidth();
         drawSideview();
       });
+    }
+
+    function getCurrentAltitudeMeters() {
+      if (!profilePoints.length) return 0;
+      if (progressMeters <= 0) return profilePoints[0].elevationMeters || 0;
+      for (let i = 1; i < profilePoints.length; i += 1) {
+        const prev = profilePoints[i - 1];
+        const curr = profilePoints[i];
+        if (progressMeters <= curr.distanceMeters) {
+          const span = Math.max(1, curr.distanceMeters - prev.distanceMeters);
+          const t = (progressMeters - prev.distanceMeters) / span;
+          return (prev.elevationMeters || 0) + ((curr.elevationMeters || 0) - (prev.elevationMeters || 0)) * t;
+        }
+      }
+      return profilePoints[profilePoints.length - 1].elevationMeters || 0;
+    }
+
+    function formatScrollDuration(totalSeconds) {
+      const safe = Math.max(0, Math.floor(totalSeconds));
+      const hours = Math.floor(safe / 3600);
+      const mins = Math.floor((safe % 3600) / 60);
+      return `${hours}h ${String(mins).padStart(2, "0")}m`;
     }
 
     function updateHud() {
@@ -590,9 +676,33 @@
       const doneKm = progressMeters / 1000;
       const totalKm = totalMeters / 1000;
       const leftKm = Math.max(0, (totalMeters - progressMeters) / 1000);
-      progressEl.textContent = `Progress: ${progressPct.toFixed(4)}%`;
-      distanceEl.textContent = `Distance: ${doneKm.toFixed(4)} / ${totalKm.toFixed(4)} km`;
-      remainingEl.textContent = `Remaining: ${leftKm.toFixed(4)} km`;
+      const screensScrolled = progressMeters / 0.2;
+      const secondsScrolled = screensScrolled * 30;
+      const altitudeMeters = getCurrentAltitudeMeters();
+      progressEl.textContent = `Progress: ${progressPct.toFixed(2)}%`;
+      distanceEl.textContent = `Distance: ${doneKm.toFixed(2)} / ${totalKm.toFixed(2)} km`;
+      remainingEl.textContent = `Remaining: ${leftKm.toFixed(2)} km`;
+      screensEl.textContent = `Screens scrolled: ${screensScrolled.toFixed(2)}`;
+      hoursEl.textContent = `Approx. hours scrolling: ${formatScrollDuration(secondsScrolled)}`;
+      altitudeEl.textContent = `Altitude: ${altitudeMeters.toFixed(2)} m`;
+
+      const now = Date.now();
+      if (progressBaselineMeters === null || progressMeters < progressBaselineMeters) {
+        progressBaselineMeters = progressMeters;
+        progressBaselineAt = now;
+      }
+      const elapsedDays = progressBaselineAt ? (now - progressBaselineAt) / 86400000 : 0;
+      const advancedMeters = progressMeters - (progressBaselineMeters || 0);
+      const metersPerDay = elapsedDays > 0 ? advancedMeters / elapsedDays : 0;
+      if (metersPerDay > 0.01 && totalMeters > progressMeters) {
+        const daysLeft = (totalMeters - progressMeters) / metersPerDay;
+        const etaDate = new Date(now + daysLeft * 86400000);
+        etaEl.textContent = `Estimated time of arrival: ${etaDate.toLocaleString()}`;
+      } else if (totalMeters <= progressMeters) {
+        etaEl.textContent = "Estimated time of arrival: Reached";
+      } else {
+        etaEl.textContent = "Estimated time of arrival: --";
+      }
     }
 
     function geoJsonLineToLatLngs(feature) {
@@ -645,17 +755,6 @@
       await syncProgressOnMap();
     }
 
-    function setBridgeStatus(text) {
-      if (!bridgeStatusEl) return;
-      bridgeStatusEl.textContent = text;
-    }
-
-    function markBridgeUpdate(source, miles) {
-      lastBridgeSource = source;
-      lastBridgeSeenAt = Date.now();
-      setBridgeStatus(`Bridge: ${source} ${miles.toFixed(4)} mi`);
-    }
-
     function setupScrollMilesBridge() {
       window.addEventListener("message", async (event) => {
         const payload = event.data;
@@ -664,7 +763,6 @@
         const miles = Number(payload.miles);
         try {
           await setProgressFromMiles(miles);
-          markBridgeUpdate("postMessage", miles);
         } catch (err) {
           console.error("Failed applying SCROLL_MILE_UPDATE", err);
         }
@@ -679,7 +777,6 @@
         if (!Number.isFinite(miles)) return;
         try {
           await setProgressFromMiles(miles);
-          markBridgeUpdate("localStorage", miles);
         } catch (err) {
           console.error("Failed applying localStorage miles", err);
         }
@@ -698,23 +795,10 @@
           if (updatedAt <= 0 || updatedAt === lastExternalUpdatedAt) return;
           lastExternalUpdatedAt = updatedAt;
           await setProgressFromMiles(miles);
-          if (hintEl) {
-            hintEl.textContent = `Synced from Scroll Mile: ${miles.toFixed(4)} mi`;
-          }
-          markBridgeUpdate("API", miles);
         } catch (err) {
           // Keep quiet to avoid noisy logs if API is temporarily unavailable.
         }
       }, 1200);
-
-      // Heartbeat indicator: shows when bridge went stale.
-      setInterval(() => {
-        if (!lastBridgeSeenAt) return;
-        const ageMs = Date.now() - lastBridgeSeenAt;
-        if (ageMs > 6000) {
-          setBridgeStatus(`Bridge: stale (${lastBridgeSource}, ${(ageMs / 1000).toFixed(1)}s ago)`);
-        }
-      }, 1000);
     }
 
     async function initMap() {
@@ -857,11 +941,10 @@
         google.maps.event.trigger(map, "resize");
 
         await syncProgressOnMap();
-        hintEl.textContent = "Trail progress is controlled by Scroll Mile app data only";
       } catch (error) {
-        hintEl.textContent = map
-          ? "Terrain map loaded, but marathon API route failed."
-          : "Map failed to load. Check API key and Maps JavaScript API.";
+        progressEl.textContent = map
+          ? "Trail statistics unavailable: API route failed."
+          : "Trail statistics unavailable: Maps failed to load.";
         console.error(error);
       }
     }
