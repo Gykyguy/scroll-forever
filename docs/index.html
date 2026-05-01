@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REALL_SCROLL_RUNNER_v1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #10131a;
+      font-family: Arial, sans-serif;
+    }
+
+    .map-shell {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #streetviewMain {
+      position: absolute;
+      inset: 0;
+      display: none;
+      z-index: 1;
+    }
+
+    .streetview-window {
+      position: absolute;
+      top: 50px;
+      right: 50px;
+      width: 300px;
+      height: 300px;
+      border: 1px solid #364259;
+      border-radius: 0;
+      overflow: hidden;
+      background: #0b1220;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+      z-index: 11;
+    }
+
+    #streetview {
+      width: 100%;
+      height: 100%;
+    }
+
+    #miniMap {
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+
+    .sideview-window {
+      position: absolute;
+      left: 50px;
+      bottom: 50px;
+      width: min(32vw, 490px);
+      min-height: 90px;
+      aspect-ratio: 1507.5 / 199;
+      z-index: 11;
+      background: #000;
+      border: 1px solid rgba(54, 66, 89, 0.7);
+      overflow: hidden;
+    }
+
+    #sideview {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #sideTrailOverlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .hud {
+      position: absolute;
+      top: 50px;
+      left: 50px;
+      z-index: 12;
+      background: rgba(0, 0, 0, 0.88);
+      border: 1px solid #364259;
+      border-radius: 0;
+      padding: 10px 12px;
+      color: #e6edf7;
+      min-width: 220px;
+      backdrop-filter: blur(3px);
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .hud p {
+      margin: 4px 0;
+      font-size: 12px;
+      color: #c5d0df;
+    }
+
+    .hud button {
+      margin-top: 6px;
+      width: 100%;
+      padding: 4px 6px;
+      border: 0.5px solid #4a566f;
+      background: #0a0a0a;
+      color: #e6edf7;
+      cursor: pointer;
+      font-size: 11px;
+      letter-spacing: 0.2px;
+      line-height: 1.2;
+    }
+
+    @media (max-width: 900px) {
+      .streetview-window {
+        width: 300px;
+        height: 300px;
+        top: 20px;
+        right: 20px;
+      }
+      .sideview-window {
+        left: 20px;
+        bottom: 20px;
+        width: min(70vw, 420px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="map-shell" aria-label="Fullscreen trail map layout">
+    <section aria-label="Google Maps window" style="width:100%;height:100%;">
+      <section class="hud" aria-live="polite">
+        <h1>Everest Base Camp Trail</h1>
+        <p id="progress">Progress: 0.0%</p>
+        <p id="distance">Distance: 0.0 / 0.0 km</p>
+        <p id="remaining">Remaining: 0.0 km</p>
+        <p id="hint">Scroll down to move forward</p>
+        <p id="bridgeStatus">Bridge: waiting for Scroll Mile data...</p>
+        <button id="viewToggle" type="button">↔ Swap View</button>
+      </section>
+      <div id="map" aria-label="Trail from Tel Aviv to Jerusalem"></div>
+      <div id="streetviewMain" aria-label="Large Street View"></div>
+      <aside class="streetview-window" aria-label="Street View">
+        <div id="streetview"></div>
+        <div id="miniMap" aria-label="Mini map view"></div>
+      </aside>
+    </section>
+    <section class="sideview-window" aria-label="Everest side profile view">
+      <canvas id="sideview"></canvas>
+      <canvas id="sideTrailOverlay"></canvas>
+    </section>
+  </main>
+  <script>
+    // Set this to your deployed Render URL once available, e.g.
+    //   "https://scroll-climber-api.onrender.com/api"
+    // When the page is opened locally (file:// or 127.0.0.1/localhost), it falls back to the local dev API.
+    const PRODUCTION_API_BASE = "https://scroll-forever.onrender.com/api";
+    const LOCAL_API_BASE = "http://127.0.0.1:3000/api";
+    const isLocalHost = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+    const API_BASE = isLocalHost ? LOCAL_API_BASE : PRODUCTION_API_BASE;
+    const GOOGLE_MAP_ID = "DEMO_MAP_ID";
+    let routePoints = [];
+    let profilePoints = [];
+    let totalMeters = 0;
+    let progressMeters = 0;
+    let travelerMarker = null;
+    let progressPolyline = null;
+    let streetViewPanorama = null;
+    let streetViewPanoramaMain = null;
+    let streetViewService = null;
+    let streetViewReqId = 0;
+    let miniMap = null;
+    let miniMapMarker = null;
+    let miniMapBasePolyline = null;
+    let miniMapProgressPolyline = null;
+    let isStreetLarge = false;
+    let sideviewReady = false;
+    let sideviewImageReady = false;
+    let sideTrailSvgPoints = [];
+    let isSyncingProgress = false;
+    let lastExternalMiles = null;
+    let lastExternalUpdatedAt = 0;
+    let lastBridgeSource = "none";
+    let lastBridgeSeenAt = 0;
+    const trailInstructions = [];
+    const sideTrailGuide = [
+      { x: 0.02, y: 0.84 },
+      { x: 0.08, y: 0.72 },
+      { x: 0.16, y: 0.76 },
+      { x: 0.28, y: 0.62 },
+      { x: 0.42, y: 0.52 },
+      { x: 0.56, y: 0.40 },
+      { x: 0.68, y: 0.28 },
+      { x: 0.76, y: 0.16 },
+      { x: 0.82, y: 0.10 },
+      { x: 0.88, y: 0.20 }
+    ];
+
+    const progressEl = document.getElementById("progress");
+    const distanceEl = document.getElementById("distance");
+    const remainingEl = document.getElementById("remaining");
+    const hintEl = document.getElementById("hint");
+    const bridgeStatusEl = document.getElementById("bridgeStatus");
+    const sideviewCanvas = document.getElementById("sideview");
+    const sideTrailOverlay = document.getElementById("sideTrailOverlay");
+    const streetViewEl = document.getElementById("streetview");
+    const streetViewMainEl = document.getElementById("streetviewMain");
+    const miniMapEl = document.getElementById("miniMap");
+    const viewToggleEl = document.getElementById("viewToggle");
+    const sideviewImage = new Image();
+    sideviewImage.src = "sideview_everest_trans.png";
+    sideviewImage.onload = () => {
+      sideviewImageReady = true;
+      resizeSideviewCanvas();
+      drawSideview();
+    };
+    const overlayTrail = {
+      imageWidth: 3015,
+      imageHeight: 398,
+      // Keep transform in source-image space so it scales correctly on all devices.
+      offsetX: 10,
+      offsetY: 50,
+      offsetXPx: 3,
+      offsetYPx: 31,
+      scaleFactor: 2,
+      points: [
+        [39, 192], [91, 165], [143, 185], [193, 191], [230, 187], [264, 181],
+        [298, 187], [337, 191], [362, 190], [454, 187], [503, 178], [517, 175],
+        [521, 172], [550, 178], [579, 172], [634, 147], [680, 136], [963, 114],
+        [987, 112], [1007, 92], [1040, 92], [1061, 79], [1082, 75], [1091, 71],
+        [1123, 69], [1146, 33]
+      ]
+    };
+
+    function resizeSideviewCanvas() {
+      if (!sideviewCanvas) return;
+      const rect = sideviewCanvas.getBoundingClientRect();
+      sideviewCanvas.width = Math.max(1, Math.floor(rect.width));
+      sideviewCanvas.height = Math.max(1, Math.floor(rect.height));
+      if (sideTrailOverlay) {
+        sideTrailOverlay.width = sideviewCanvas.width;
+        sideTrailOverlay.height = sideviewCanvas.height;
+      }
+    }
+
+    function mapProfileToCanvas(profile, width, height, padding) {
+      if (!profile.length) return [];
+
+      const minElevation = Math.min(...profile.map((p) => p.elevationMeters));
+      const maxElevation = Math.max(...profile.map((p) => p.elevationMeters));
+      const distanceMax = profile[profile.length - 1].distanceMeters || 1;
+      const elevationSpan = Math.max(1, maxElevation - minElevation);
+      const innerW = Math.max(1, width - padding * 2);
+      const innerH = Math.max(1, height - padding * 2);
+
+      return profile.map((p) => {
+        const x = padding + (p.distanceMeters / distanceMax) * innerW;
+        const yNorm = (p.elevationMeters - minElevation) / elevationSpan;
+        const y = height - padding - yNorm * innerH;
+        return { x, y };
+      });
+    }
+
+    function simplifyPoints(points, maxPoints) {
+      if (points.length <= maxPoints) return points;
+      const step = Math.ceil(points.length / maxPoints);
+      const out = [];
+      for (let i = 0; i < points.length; i += step) {
+        out.push(points[i]);
+      }
+      if (out[out.length - 1] !== points[points.length - 1]) {
+        out.push(points[points.length - 1]);
+      }
+      return out;
+    }
+
+    function drawSmoothLine(ctx, points) {
+      if (points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length - 1; i += 1) {
+        const midX = (points[i].x + points[i + 1].x) / 2;
+        const midY = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+      }
+      const last = points[points.length - 1];
+      ctx.lineTo(last.x, last.y);
+    }
+
+    function drawSegmentLine(ctx, points) {
+      if (points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+    }
+
+    function computeHeading(from, to) {
+      const lat1 = from.lat * (Math.PI / 180);
+      const lat2 = to.lat * (Math.PI / 180);
+      const dLng = (to.lng - from.lng) * (Math.PI / 180);
+      const y = Math.sin(dLng) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function updateStreetViewAt(point, lookAheadPoint) {
+      if ((!streetViewPanorama && !streetViewPanoramaMain) || !streetViewService || !point) return;
+      const reqId = ++streetViewReqId;
+      streetViewService.getPanorama(
+        {
+          location: point,
+          radius: 50000,
+          preference: google.maps.StreetViewPreference.NEAREST
+        },
+        (data, status) => {
+          if (reqId !== streetViewReqId) return;
+          if (status === "OK" && data && data.location) {
+            const panoPos = data.location.latLng || point;
+            const heading = lookAheadPoint ? computeHeading(point, lookAheadPoint) : 0;
+            const pov = { heading, pitch: 0 };
+            if (streetViewPanorama) {
+              streetViewPanorama.setPano(data.location.pano);
+              streetViewPanorama.setPosition(panoPos);
+              streetViewPanorama.setPov(pov);
+            }
+            if (streetViewPanoramaMain) {
+              streetViewPanoramaMain.setPano(data.location.pano);
+              streetViewPanoramaMain.setPosition(panoPos);
+              streetViewPanoramaMain.setPov(pov);
+            }
+          } else {
+            if (streetViewPanorama) streetViewPanorama.setVisible(false);
+            if (streetViewPanoramaMain) streetViewPanoramaMain.setVisible(false);
+          }
+        }
+      );
+    }
+
+    function updateMiniMapAt(point) {
+      if (!miniMap || !point) return;
+      miniMap.setCenter(point);
+      if (!miniMapMarker) {
+        miniMapMarker = new google.maps.Marker({
+          map: miniMap,
+          position: point,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: "#ffffff",
+            fillOpacity: 1,
+            strokeColor: "#ff0000",
+            strokeWeight: 2
+          }
+        });
+      } else {
+        miniMapMarker.setPosition(point);
+      }
+    }
+
+    function applyMiniWindowMode() {
+      const mapEl = document.getElementById("map");
+      if (isStreetLarge) {
+        mapEl.style.display = "none";
+        streetViewMainEl.style.display = "block";
+        streetViewEl.style.display = "none";
+        miniMapEl.style.display = "block";
+      } else {
+        mapEl.style.display = "block";
+        streetViewMainEl.style.display = "none";
+        streetViewEl.style.display = "block";
+        miniMapEl.style.display = "none";
+      }
+      if (streetViewPanorama) streetViewPanorama.setVisible(!isStreetLarge);
+      if (streetViewPanoramaMain) streetViewPanoramaMain.setVisible(isStreetLarge);
+      if (miniMap) {
+        google.maps.event.trigger(miniMap, "resize");
+      }
+    }
+
+    function sampleSvgTrail(imageRect) {
+      if (trailInstructions.length) {
+        const dashUnitPx = 10;
+        const unitPx = dashUnitPx;
+        const verticalScale = 0.35;
+        let x = imageRect.x + imageRect.w * 0.03;
+        let y = imageRect.y + imageRect.h * 0.75;
+        const points = [{ x, y }];
+        trailInstructions.forEach(([count, angle]) => {
+          const rad = (angle * Math.PI) / 180;
+          const length = count * unitPx;
+          x += Math.cos(rad) * length;
+          y -= Math.sin(rad) * length * verticalScale;
+          y = Math.max(imageRect.y + imageRect.h * 0.08, Math.min(imageRect.y + imageRect.h * 0.92, y));
+          points.push({ x, y });
+        });
+        return simplifyPoints(points, 500);
+      }
+
+      if (!sideTrailSvgPoints.length) {
+        return simplifyPoints(
+          sideTrailGuide.map((p) => ({
+            x: imageRect.x + p.x * imageRect.w,
+            y: imageRect.y + p.y * imageRect.h
+          })),
+          500
+        );
+      }
+      const converted = sideTrailSvgPoints.map((p) => ({
+        x: imageRect.x + p.x * imageRect.w,
+        y: imageRect.y + p.y * imageRect.h
+      }));
+      return simplifyPoints(converted, 900);
+    }
+
+    async function loadSideTrailSvg() {
+      const response = await fetch("sideimage_with_path.svg");
+      if (!response.ok) {
+        throw new Error(`Failed to load sideimage_with_path.svg (${response.status})`);
+      }
+
+      const svgText = await response.text();
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+      const svgEl = svgDoc.querySelector("svg");
+      const pathEl = svgDoc.querySelector("path");
+      if (!svgEl || !pathEl) {
+        throw new Error("sideimage_with_path.svg must contain one trail <path>.");
+      }
+
+      const viewBox = (svgEl.getAttribute("viewBox") || "").trim().split(/\s+/).map(Number);
+      if (viewBox.length !== 4 || viewBox.some(Number.isNaN)) {
+        throw new Error("sideimage_with_path.svg must have a valid viewBox.");
+      }
+      const [, , vbWidth, vbHeight] = viewBox;
+
+      const svgNS = "http://www.w3.org/2000/svg";
+      const liveSvg = document.createElementNS(svgNS, "svg");
+      liveSvg.style.position = "absolute";
+      liveSvg.style.width = "0";
+      liveSvg.style.height = "0";
+      liveSvg.style.overflow = "hidden";
+      liveSvg.style.pointerEvents = "none";
+      const livePath = document.createElementNS(svgNS, "path");
+      livePath.setAttribute("d", pathEl.getAttribute("d") || "");
+      liveSvg.appendChild(livePath);
+      document.body.appendChild(liveSvg);
+
+      const totalLen = livePath.getTotalLength();
+      if (!Number.isFinite(totalLen) || totalLen <= 0) {
+        document.body.removeChild(liveSvg);
+        throw new Error("SVG path length is invalid.");
+      }
+      const samples = Math.max(700, Math.floor(totalLen / 1.5));
+      const points = [];
+      for (let i = 0; i <= samples; i += 1) {
+        const pt = livePath.getPointAtLength((i / samples) * totalLen);
+        points.push({ x: pt.x / vbWidth, y: pt.y / vbHeight });
+      }
+      document.body.removeChild(liveSvg);
+      sideTrailSvgPoints = points;
+    }
+
+    function drawTrailOverlay() {
+      if (!sideTrailOverlay) return;
+      const ctx = sideTrailOverlay.getContext("2d");
+      const w = sideTrailOverlay.width;
+      const h = sideTrailOverlay.height;
+      ctx.clearRect(0, 0, w, h);
+      if (!overlayTrail.points.length) return;
+
+      const sx = w / overlayTrail.imageWidth;
+      const sy = h / overlayTrail.imageHeight;
+      const xOffset = overlayTrail.offsetX * sx + (overlayTrail.offsetXPx || 0);
+      const yOffset = overlayTrail.offsetY * sy + (overlayTrail.offsetYPx || 0);
+      const scaleFactor = overlayTrail.scaleFactor;
+      const anchorX = overlayTrail.points[0][0] * sx;
+      const anchorY = overlayTrail.points[0][1] * sy;
+
+      const transformed = [{ x: anchorX + xOffset, y: anchorY + yOffset }];
+      for (let i = 1; i < overlayTrail.points.length; i += 1) {
+        const rawX = overlayTrail.points[i][0] * sx;
+        const rawY = overlayTrail.points[i][1] * sy;
+        const scaledX = anchorX + (rawX - anchorX) * scaleFactor;
+        const scaledY = anchorY + (rawY - anchorY) * scaleFactor;
+        transformed.push({ x: scaledX + xOffset, y: scaledY + yOffset });
+      }
+
+      // Full dashed path
+      ctx.beginPath();
+      ctx.moveTo(transformed[0].x, transformed[0].y);
+      for (let i = 1; i < transformed.length; i += 1) {
+        ctx.lineTo(transformed[i].x, transformed[i].y);
+      }
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+      ctx.stroke();
+
+      // Solid progress path synced to global progress.
+      const ratio = totalMeters > 0 ? Math.max(0, Math.min(1, progressMeters / totalMeters)) : 0;
+      const progressIndex = Math.max(0, Math.floor(ratio * (transformed.length - 1)));
+      if (progressIndex > 0) {
+        ctx.beginPath();
+        ctx.moveTo(transformed[0].x, transformed[0].y);
+        for (let i = 1; i <= progressIndex; i += 1) {
+          ctx.lineTo(transformed[i].x, transformed[i].y);
+        }
+        ctx.setLineDash([]);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "#ff0000";
+        ctx.stroke();
+      }
+
+      // Progress marker
+      const marker = transformed[progressIndex];
+      ctx.beginPath();
+      ctx.arc(marker.x, marker.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#ff0000";
+      ctx.stroke();
+    }
+
+    function drawSideview() {
+      if (!sideviewCanvas || !sideviewImageReady) return;
+      const ctx = sideviewCanvas.getContext("2d");
+      const w = sideviewCanvas.width;
+      const h = sideviewCanvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
+
+      const imageRect = {
+        w,
+        h,
+        x: 0,
+        y: 0
+      };
+
+      ctx.drawImage(sideviewImage, imageRect.x, imageRect.y, imageRect.w, imageRect.h);
+      drawTrailOverlay();
+    }
+
+    async function initSideview() {
+      try {
+        await loadSideTrailSvg();
+      } catch (svgErr) {
+        console.warn("Falling back to guide trail points.", svgErr);
+      }
+      const profileData = await fetchJson(`${API_BASE}/profile`);
+      profilePoints = profileData.profile || [];
+      totalMeters = profileData.totalDistanceMeters || totalMeters;
+      sideviewReady = true;
+      resizeSideviewCanvas();
+      drawSideview();
+      window.addEventListener("resize", () => {
+        resizeSideviewCanvas();
+        drawSideview();
+      });
+    }
+
+    function updateHud() {
+      const progressPct = totalMeters ? (progressMeters / totalMeters) * 100 : 0;
+      const doneKm = progressMeters / 1000;
+      const totalKm = totalMeters / 1000;
+      const leftKm = Math.max(0, (totalMeters - progressMeters) / 1000);
+      progressEl.textContent = `Progress: ${progressPct.toFixed(4)}%`;
+      distanceEl.textContent = `Distance: ${doneKm.toFixed(4)} / ${totalKm.toFixed(4)} km`;
+      remainingEl.textContent = `Remaining: ${leftKm.toFixed(4)} km`;
+    }
+
+    function geoJsonLineToLatLngs(feature) {
+      return feature.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status}) for ${url}`);
+      }
+      return response.json();
+    }
+
+    async function syncProgressOnMap() {
+      if (!progressPolyline || isSyncingProgress) return;
+      isSyncingProgress = true;
+      try {
+        const data = await fetchJson(`${API_BASE}/progress?distanceMeters=${progressMeters}`);
+        const progressPath = geoJsonLineToLatLngs(data.progressLine);
+        progressPolyline.setPath(progressPath);
+        if (miniMapProgressPolyline) {
+          miniMapProgressPolyline.setPath(progressPath);
+        }
+        progressMeters = data.progressDistanceMeters;
+        totalMeters = data.totalDistanceMeters;
+        if (travelerMarker && progressPath.length) {
+          const livePoint = progressPath[progressPath.length - 1];
+          travelerMarker.setPosition(livePoint);
+          const lookAheadPoint = progressPath[Math.max(0, progressPath.length - 2)] || livePoint;
+          updateStreetViewAt(livePoint, lookAheadPoint);
+          updateMiniMapAt(livePoint);
+        }
+        updateHud();
+        drawSideview();
+      } finally {
+        isSyncingProgress = false;
+      }
+    }
+
+    async function setProgressFromMiles(miles) {
+      if (!Number.isFinite(miles)) return;
+      if (miles < 0) return;
+      if (lastExternalMiles !== null && Math.abs(lastExternalMiles - miles) < 0.000001) return;
+      lastExternalMiles = miles;
+      progressMeters = miles * 1609.344;
+      if (totalMeters > 0) {
+        progressMeters = Math.max(0, Math.min(totalMeters, progressMeters));
+      }
+      await syncProgressOnMap();
+    }
+
+    function setBridgeStatus(text) {
+      if (!bridgeStatusEl) return;
+      bridgeStatusEl.textContent = text;
+    }
+
+    function markBridgeUpdate(source, miles) {
+      lastBridgeSource = source;
+      lastBridgeSeenAt = Date.now();
+      setBridgeStatus(`Bridge: ${source} ${miles.toFixed(4)} mi`);
+    }
+
+    function setupScrollMilesBridge() {
+      window.addEventListener("message", async (event) => {
+        const payload = event.data;
+        if (!payload || typeof payload !== "object") return;
+        if (payload.type !== "SCROLL_MILE_UPDATE") return;
+        const miles = Number(payload.miles);
+        try {
+          await setProgressFromMiles(miles);
+          markBridgeUpdate("postMessage", miles);
+        } catch (err) {
+          console.error("Failed applying SCROLL_MILE_UPDATE", err);
+        }
+      });
+
+      // Optional fallback: localStorage bridge for quick integration testing.
+      // Extension can set localStorage key `scroll_mile_miles`.
+      setInterval(async () => {
+        const raw = window.localStorage.getItem("scroll_mile_miles");
+        if (raw === null) return;
+        const miles = Number(raw);
+        if (!Number.isFinite(miles)) return;
+        try {
+          await setProgressFromMiles(miles);
+          markBridgeUpdate("localStorage", miles);
+        } catch (err) {
+          console.error("Failed applying localStorage miles", err);
+        }
+      }, 2000);
+
+      // Primary external bridge: localhost API fed by Scroll Mile dashboard script.
+      setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/external-progress`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const miles = Number(data.miles);
+          const updatedAt = Number(data.updatedAt || 0);
+          if (!Number.isFinite(miles)) return;
+          if (!Number.isFinite(updatedAt)) return;
+          if (updatedAt <= 0 || updatedAt === lastExternalUpdatedAt) return;
+          lastExternalUpdatedAt = updatedAt;
+          await setProgressFromMiles(miles);
+          if (hintEl) {
+            hintEl.textContent = `Synced from Scroll Mile: ${miles.toFixed(4)} mi`;
+          }
+          markBridgeUpdate("API", miles);
+        } catch (err) {
+          // Keep quiet to avoid noisy logs if API is temporarily unavailable.
+        }
+      }, 1200);
+
+      // Heartbeat indicator: shows when bridge went stale.
+      setInterval(() => {
+        if (!lastBridgeSeenAt) return;
+        const ageMs = Date.now() - lastBridgeSeenAt;
+        if (ageMs > 6000) {
+          setBridgeStatus(`Bridge: stale (${lastBridgeSource}, ${(ageMs / 1000).toFixed(1)}s ago)`);
+        }
+      }, 1000);
+    }
+
+    async function initMap() {
+      let map;
+      try {
+        const { Map } = await google.maps.importLibrary("maps");
+
+        map = new Map(document.getElementById("map"), {
+          center: { lat: 27.9881, lng: 86.925 },
+          zoom: 15,
+          mapTypeId: "satellite",
+          mapTypeControl: false,
+          fullscreenControl: false,
+          mapId: GOOGLE_MAP_ID,
+          tilt: 60,
+          heading: 35
+        });
+
+        streetViewPanorama = new google.maps.StreetViewPanorama(streetViewEl, {
+          position: map.getCenter(),
+          pov: {
+            heading: 0,
+            pitch: 0
+          },
+          zoom: 1,
+          addressControl: false,
+          linksControl: true,
+          panControl: true,
+          zoomControl: true,
+          fullscreenControl: false
+        });
+        streetViewPanoramaMain = new google.maps.StreetViewPanorama(streetViewMainEl, {
+          position: map.getCenter(),
+          pov: {
+            heading: 0,
+            pitch: 0
+          },
+          zoom: 1,
+          addressControl: false,
+          linksControl: true,
+          panControl: true,
+          zoomControl: true,
+          fullscreenControl: false
+        });
+        streetViewService = new google.maps.StreetViewService();
+        miniMap = new Map(miniMapEl, {
+          center: { lat: 27.9881, lng: 86.925 },
+          zoom: 14,
+          mapTypeId: "satellite",
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false
+        });
+        miniMapBasePolyline = new google.maps.Polyline({
+          map: miniMap,
+          path: [],
+          strokeOpacity: 0,
+          strokeWeight: 8,
+          icons: [{
+            icon: {
+              path: "M 0,-1 0,1",
+              strokeOpacity: 0.5,
+              strokeColor: "#ff0000",
+              scale: 3
+            },
+            offset: "0",
+            repeat: "10px"
+          }]
+        });
+        miniMapProgressPolyline = new google.maps.Polyline({
+          map: miniMap,
+          path: [],
+          strokeColor: "#ff0000",
+          strokeOpacity: 1,
+          strokeWeight: 6
+        });
+        applyMiniWindowMode();
+        if (viewToggleEl) {
+          viewToggleEl.addEventListener("click", () => {
+            isStreetLarge = !isStreetLarge;
+            applyMiniWindowMode();
+          });
+        }
+
+        const routeData = await fetchJson(`${API_BASE}/marathon-route`);
+        routePoints = geoJsonLineToLatLngs(routeData.route);
+        totalMeters = routeData.totalDistanceMeters;
+        await initSideview();
+
+        new google.maps.Polyline({
+          map,
+          path: routePoints,
+          strokeOpacity: 0,
+          strokeWeight: 11,
+          icons: [{
+            icon: {
+              path: "M 0,-1 0,1",
+              strokeOpacity: 0.5,
+              strokeColor: "#ff0000",
+              scale: 4
+            },
+            offset: "0",
+            repeat: "12px"
+          }]
+        });
+        if (miniMapBasePolyline) {
+          miniMapBasePolyline.setPath(routePoints);
+        }
+
+        progressPolyline = new google.maps.Polyline({
+          map,
+          path: [routePoints[0]],
+          strokeColor: "#ff0000",
+          strokeOpacity: 1,
+          strokeWeight: 11
+        });
+
+        travelerMarker = new google.maps.Marker({
+          map,
+          position: routePoints[0],
+          title: "Current position",
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 7,
+            fillColor: "#ffffff",
+            fillOpacity: 1,
+            strokeColor: "#ff0000",
+            strokeWeight: 3
+          }
+        });
+
+        // Start focused on the actual current location instead of full-route fit.
+        const startPoint = routePoints[0];
+        map.setCenter(startPoint);
+        map.setZoom(15);
+        map.setTilt(60);
+        map.setHeading(35);
+
+        // Keep polylines visible after any display/layout toggles.
+        google.maps.event.trigger(map, "resize");
+
+        await syncProgressOnMap();
+        hintEl.textContent = "Trail progress is controlled by Scroll Mile app data only";
+      } catch (error) {
+        hintEl.textContent = map
+          ? "Terrain map loaded, but marathon API route failed."
+          : "Map failed to load. Check API key and Maps JavaScript API.";
+        console.error(error);
+      }
+    }
+  </script>
+  <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCNYXdolRT3NqIVdpN-af1BX_Dc1TRZ6mc&callback=initMap"></script>
+  <script>
+    setupScrollMilesBridge();
+  </script>
+</body>
+</html>
