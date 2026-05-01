@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: scroll-climber-api
+    runtime: python
+    plan: free
+    rootDir: WEB projects/scroll_climber/reall-scroll-runner-api
+    buildCommand: ""
+    startCommand: python server.py
+    envVars:
+      - key: EXTERNAL_PROGRESS_TOKEN
+        generateValue: true
+    healthCheckPath: /api/health

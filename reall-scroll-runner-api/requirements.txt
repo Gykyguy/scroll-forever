@@ -1,0 +1,1 @@
+# API uses only Python stdlib; this file exists so Render auto-detects Python.

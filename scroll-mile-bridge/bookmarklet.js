@@ -1,0 +1,1 @@
+javascript:(async()=>{try{const u="file:///Users/guykowen/Downloads/WEB%20projects/scroll_climber/scroll-mile-bridge/bridge-snippet.js";const t=await fetch(u).then(r=>r.text());(0,eval)(t);}catch(e){console.error("Bookmarklet bridge loader failed",e);}})();
