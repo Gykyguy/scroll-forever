@@ -36,4 +36,5 @@ You should get `{"ok": true}` and a GeoJSON snippet.
 
 - `EXTERNAL_PROGRESS_TOKEN` is required as the `X-Bridge-Token` header for any `POST /api/external-progress` request. If the env var is empty, auth is disabled (matches local dev behavior).
 - Render's free tier sleeps idle services; the first request after sleep is slow.
+- **Saved trail progress**: After each successful `POST /api/external-progress`, miles are written to `data/external_progress.json` on the instance disk and reloaded on startup. That survives normal restarts and idle wake-ups. A **new deploy** or **recycled instance** can still reset the file on the free tier unless you attach a **persistent disk** in Render and set `EXTERNAL_PROGRESS_STATE_FILE` to a path on that disk (or use an external database).
 - The included `render.yaml` lets Render auto-detect settings via the **Blueprint** flow if you prefer that path.

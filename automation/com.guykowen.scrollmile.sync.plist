@@ -27,8 +27,9 @@
         </dict>
     </array>
 
+    <!-- Run once when you log in (in addition to 09:00 / 21:00). Reload plist after editing. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 
     <key>StandardOutPath</key>
     <string>/Users/guykowen/Downloads/WEB projects/scroll_climber/automation/logs/sync.out.log</string>

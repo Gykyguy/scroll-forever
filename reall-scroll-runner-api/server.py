@@ -11,6 +11,11 @@ import xml.etree.ElementTree as ET
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "3000"))
 EXTERNAL_PROGRESS_TOKEN = os.environ.get("EXTERNAL_PROGRESS_TOKEN", "")
+# Persist Scroll Mile miles across process restarts (local + Render). Override path if needed.
+_DEFAULT_PROGRESS_STATE = Path(__file__).parent / "data" / "external_progress.json"
+EXTERNAL_PROGRESS_STATE_FILE = Path(
+    os.environ.get("EXTERNAL_PROGRESS_STATE_FILE", str(_DEFAULT_PROGRESS_STATE))
+)
 GPX_PATH = Path(__file__).parent / "data" / "everest_base_camp.gpx"
 # Approximate mountaineering line from Everest Base Camp to summit.
 # Coordinates are [lng, lat], routed through common camp positions.
@@ -110,6 +115,42 @@ def interpolate(a, b, t):
     return [lng1 + (lng2 - lng1) * t, lat1 + (lat2 - lat1) * t]
 
 
+def load_external_progress_state():
+    """Restore miles from disk so the trail survives API restarts."""
+    path = EXTERNAL_PROGRESS_STATE_FILE
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        miles = float(raw.get("miles", 0))
+        source = str(raw.get("source", "restored"))
+        updated_at = int(raw.get("updatedAt", 0))
+        if miles < 0:
+            return None
+        return miles, source, updated_at
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def save_external_progress_state(miles, source, updated_at_ms):
+    path = EXTERNAL_PROGRESS_STATE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "miles": round(float(miles), 6),
+        "source": str(source),
+        "updatedAt": int(updated_at_ms),
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    tmp.replace(path)
+
+
+_initial_external = load_external_progress_state()
+_INITIAL_MILES = _initial_external[0] if _initial_external else 0.0
+_INITIAL_SOURCE = _initial_external[1] if _initial_external else "none"
+_INITIAL_AT = _initial_external[2] if _initial_external else 0
+
+
 def progress_slice(coords, cumulative, meters):
     if meters <= 0:
         return [coords[0]]
@@ -142,9 +183,9 @@ class Handler(BaseHTTPRequestHandler):
                 "elevationMeters": round(float(elevations[i]), 2),
             }
         )
-    external_progress_miles = 0.0
-    external_progress_source = "none"
-    external_progress_updated_at = 0
+    external_progress_miles = _INITIAL_MILES
+    external_progress_source = _INITIAL_SOURCE
+    external_progress_updated_at = _INITIAL_AT
 
     def _send_json(self, data, status=200):
         payload = json.dumps(data).encode("utf-8")
@@ -202,6 +243,11 @@ class Handler(BaseHTTPRequestHandler):
         Handler.external_progress_miles = miles
         Handler.external_progress_source = str(source)
         Handler.external_progress_updated_at = int(time.time() * 1000)
+        save_external_progress_state(
+            Handler.external_progress_miles,
+            Handler.external_progress_source,
+            Handler.external_progress_updated_at,
+        )
 
         self._send_json(
             {
@@ -280,5 +326,10 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     server = HTTPServer((HOST, PORT), Handler)
     auth_state = "enabled" if EXTERNAL_PROGRESS_TOKEN else "disabled (set EXTERNAL_PROGRESS_TOKEN to enable)"
-    print(f"Marathon API running on http://{HOST}:{PORT} (write auth: {auth_state})")
+    miles_hint = (
+        f"miles={Handler.external_progress_miles:.4f} (restored from disk)"
+        if _initial_external
+        else "no saved miles yet"
+    )
+    print(f"Marathon API running on http://{HOST}:{PORT} (write auth: {auth_state}; {miles_hint})")
     server.serve_forever()

@@ -35,7 +35,11 @@ cp com.guykowen.scrollmile.sync.plist "$HOME/Library/LaunchAgents/"
 launchctl load "$HOME/Library/LaunchAgents/com.guykowen.scrollmile.sync.plist"
 ```
 
-The job runs at 09:00 and 21:00 local time. To change the times, edit
+The job runs at **09:00 and 21:00** local time, and **once at login** (`RunAtLoad`) so your Mac pushes fresh miles soon after you open it — not only when those clock times hit.
+
+Your trail distance on the website is stored on the **Render API server** (persisted to disk there after each sync). Closing the Mac does not erase it; only a Render redeploy or cleared disk would reset it unless miles are re-synced.
+
+To change the schedule times, edit
 `StartCalendarInterval` in the plist and reload it:
 
 ```bash

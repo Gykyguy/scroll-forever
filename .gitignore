@@ -11,3 +11,7 @@ venv/
 automation/.env
 automation/logs/
 *.log
+
+# Scroll Mile miles persisted by API (local / Render disk)
+reall-scroll-runner-api/data/external_progress.json
+reall-scroll-runner-api/data/external_progress.json.tmp
