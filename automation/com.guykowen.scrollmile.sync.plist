@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/guykowen/Downloads/WEB projects/scroll_climber/automation/run_sync.sh</string>
+        <string>/Users/guykowen/Library/Application Support/scroll-mile-sync/run_sync.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>

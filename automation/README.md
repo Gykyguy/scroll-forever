@@ -29,10 +29,16 @@ cp .env.example .env
 # 4. Smoke test
 ./run_sync.sh
 
-# 5. Install launchd job
-mkdir -p logs
+# 5. Install launchd job (copy scripts out of Downloads)
+#    macOS often blocks launchd from running scripts under ~/Downloads ("Operation not permitted").
+#    Keep a copy under Application Support and point the plist at that path.
+SUPPORT="$HOME/Library/Application Support/scroll-mile-sync"
+mkdir -p "$SUPPORT" logs
+cp -f run_sync.sh sync_scroll_mile.py .env "$SUPPORT/"
+chmod +x "$SUPPORT/run_sync.sh"
 cp com.guykowen.scrollmile.sync.plist "$HOME/Library/LaunchAgents/"
 launchctl load "$HOME/Library/LaunchAgents/com.guykowen.scrollmile.sync.plist"
+# When you change .env or sync_scroll_mile.py, copy those files into "$SUPPORT" again.
 ```
 
 The job runs at **09:00 and 21:00** local time, and **once at login** (`RunAtLoad`) so your Mac pushes fresh miles soon after you open it — not only when those clock times hit.
