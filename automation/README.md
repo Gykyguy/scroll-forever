@@ -25,6 +25,11 @@ cp .env.example .env
 #   BRIDGE_URL                = https://<your-render-app>.onrender.com/api/external-progress
 #   EXTERNAL_PROGRESS_TOKEN   = same value you set on Render
 #   USER_DATA_DIR             = absolute path to the profile dir from step 2
+#   MIRROR_SCROLL_MILE_FROM_CHROME=1  (recommended on macOS)
+#       Copies Scroll Mile storage from your real Chrome "Default" profile into
+#       USER_DATA_DIR before each run. Chrome must be **fully quit** first, or the
+#       script exits with an error. Playwright cannot open ~/Library/.../Google/Chrome
+#       directly (Chrome blocks automation on that path).
 
 # 4. Smoke test
 ./run_sync.sh

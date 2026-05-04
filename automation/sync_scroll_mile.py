@@ -9,7 +9,11 @@ Required env vars:
   BRIDGE_URL              e.g. https://scroll-climber-api.onrender.com/api/external-progress
   EXTERNAL_PROGRESS_TOKEN must match the token configured on the API
   USER_DATA_DIR           absolute path to a Chrome user-data dir that has the
-                          Scroll Mile extension loaded
+                          Scroll Mile extension loaded (e.g. .../Google/Chrome)
+  CHROME_PROFILE_DIRECTORY optional; Chrome profile folder name under USER_DATA_DIR
+                          (e.g. Default, Profile 1). Required when using the main
+                          Chrome user-data dir so the correct profile is opened.
+                          Quit regular Chrome before sync or the profile may be locked.
 Optional:
   EXTENSION_ID            override default Scroll Mile extension id
   BROWSER_CHANNEL         Playwright browser channel (default: chrome)
@@ -84,18 +88,22 @@ def read_lifetime_miles(
     headless: bool,
     timeout_ms: int,
     browser_channel: str,
+    profile_directory: str,
 ) -> Optional[float]:
     target_url = f"chrome-extension://{extension_id}/{DASHBOARD_PATH}"
+    launch_args = [
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+    if profile_directory:
+        launch_args.append(f"--profile-directory={profile_directory}")
     with sync_playwright() as p:
         browser_context = p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless,
             channel=browser_channel,
             ignore_default_args=["--disable-extensions"],
-            args=[
-                "--no-first-run",
-                "--no-default-browser-check",
-            ],
+            args=launch_args,
         )
         try:
             page = browser_context.new_page()
@@ -117,6 +125,7 @@ def main() -> int:
     bridge_url = os.environ.get("BRIDGE_URL", "").strip()
     token = os.environ.get("EXTERNAL_PROGRESS_TOKEN", "").strip()
     user_data_dir = os.environ.get("USER_DATA_DIR", "").strip()
+    profile_directory = os.environ.get("CHROME_PROFILE_DIRECTORY", "").strip()
     extension_id = os.environ.get("EXTENSION_ID", DEFAULT_EXTENSION_ID).strip()
     browser_channel = os.environ.get("BROWSER_CHANNEL", "chrome").strip() or "chrome"
     headless = os.environ.get("HEADLESS", "0") == "1"
@@ -135,7 +144,14 @@ def main() -> int:
         print(f"Missing required env vars: {', '.join(missing)}", file=sys.stderr)
         return 2
 
-    miles = read_lifetime_miles(user_data_dir, extension_id, headless, timeout_ms, browser_channel)
+    miles = read_lifetime_miles(
+        user_data_dir,
+        extension_id,
+        headless,
+        timeout_ms,
+        browser_channel,
+        profile_directory,
+    )
     if miles is None:
         print("Could not read #lifetimeMiles from dashboard", file=sys.stderr)
         return 3
