@@ -748,6 +748,39 @@
     }
 
     function setupScrollMilesBridge() {
+      const LAST_EXTERNAL_PROGRESS_KEY = "foreverest_last_external_progress_v1";
+      let didHydrateFromCache = false;
+
+      function loadCachedExternalProgress() {
+        try {
+          const raw = window.localStorage.getItem(LAST_EXTERNAL_PROGRESS_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          const miles = Number(parsed?.miles);
+          const updatedAt = Number(parsed?.updatedAt || 0);
+          const source = String(parsed?.source || "none");
+          if (!Number.isFinite(miles)) return null;
+          if (!Number.isFinite(updatedAt)) return null;
+          if (miles < 0) return null;
+          return { miles, updatedAt, source };
+        } catch {
+          return null;
+        }
+      }
+
+      function saveCachedExternalProgress(miles, updatedAt, source) {
+        try {
+          const payload = {
+            miles: Number(miles),
+            updatedAt: Number(updatedAt),
+            source: String(source || "external"),
+          };
+          window.localStorage.setItem(LAST_EXTERNAL_PROGRESS_KEY, JSON.stringify(payload));
+        } catch {
+          // Ignore storage write errors (private mode, quota, etc.)
+        }
+      }
+
       window.addEventListener("message", async (event) => {
         const payload = event.data;
         if (!payload || typeof payload !== "object") return;
@@ -767,6 +800,8 @@
         if (raw === null) return;
         const miles = Number(raw);
         if (!Number.isFinite(miles)) return;
+        // If localStorage is stale (often 0), it can override the cached progress fallback.
+        if (miles <= 0) return;
         try {
           await setProgressFromMiles(miles);
         } catch (err) {
@@ -777,16 +812,36 @@
       // Primary external bridge: localhost API fed by Scroll Mile dashboard script.
       setInterval(async () => {
         try {
+          // If Render forgets progress (miles=0/updatedAt=0), hydrate the trail from the
+          // last good value we cached in the browser. This prevents a "reset to 0" flash.
+          if (!progressPolyline && !didHydrateFromCache) return;
+
           const res = await fetch(`${API_BASE}/external-progress`);
           if (!res.ok) return;
           const data = await res.json();
           const miles = Number(data.miles);
           const updatedAt = Number(data.updatedAt || 0);
+          const source = String(data.source || "none");
           if (!Number.isFinite(miles)) return;
           if (!Number.isFinite(updatedAt)) return;
-          if (updatedAt <= 0 || updatedAt === lastExternalUpdatedAt) return;
-          lastExternalUpdatedAt = updatedAt;
-          await setProgressFromMiles(miles);
+
+          const apiHasRealProgress = updatedAt > 0 && source !== "none";
+
+          if (apiHasRealProgress && updatedAt !== lastExternalUpdatedAt) {
+            lastExternalUpdatedAt = updatedAt;
+            await setProgressFromMiles(miles);
+            saveCachedExternalProgress(miles, updatedAt, source);
+            return;
+          }
+
+          // Render can return miles=0 after a restart/deploy; don't overwrite the UI with 0.
+          if (!didHydrateFromCache && !apiHasRealProgress) {
+            const cached = loadCachedExternalProgress();
+            if (cached && cached.updatedAt > 0 && cached.miles > 0) {
+              didHydrateFromCache = true;
+              await setProgressFromMiles(cached.miles);
+            }
+          }
         } catch (err) {
           // Keep quiet to avoid noisy logs if API is temporarily unavailable.
         }
